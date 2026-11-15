@@ -4,7 +4,7 @@
 
 这是面向华中师范大学计算机学院师生和办公室负责人的 Spring Boot REST 后端。首期覆盖身份审核、五间会议室查询、师生预约、负责人确认/拒绝、停用影响处理、通知、生命周期状态和操作日志。
 
-不包含微信小程序页面、真实微信登录、学校统一身份认证、订阅消息、付费、门禁、签到、周期预约或数据迁移。首期用人工身份审核完成业务闭环，不保存学校密码。
+不包含微信小程序页面、学校统一身份认证、订阅消息、付费、门禁、签到、周期预约或数据迁移。后端已支持微信小程序 `wx.login` 的 code 换取 Bearer 会话，身份资料仍由负责人人工审核，不保存学校密码。
 
 ## 2. 技术与目录
 
@@ -20,7 +20,7 @@
 ```text
 src/main/java/cn/ccnu/roombooking/
 ├── common/       错误结构、请求身份和 DTO
-├── config/       X-User-Id 开发身份过滤器
+├── config/       Bearer 会话和 X-User-Id 开发身份过滤器
 ├── domain/       实体、枚举、仓储和锁定查询
 ├── service/      事务业务规则和生命周期处理
 └── web/          REST 控制器
@@ -37,7 +37,7 @@ docs/openapi.yaml
 CREATE DATABASE room_booking CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-默认连接参数是：`localhost:3306`、数据库 `room_booking`、用户名 `root`、密码 `1234`。可通过 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD` 覆盖。
+默认连接参数是：`localhost:3306`、数据库 `room_booking`、用户名 `root`、密码 `1234`。可通过 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD` 覆盖。微信登录还需要配置 `WECHAT_APP_ID`、`WECHAT_APP_SECRET`，会话有效期可通过 `AUTH_SESSION_TTL_SECONDS` 覆盖。
 
 ```powershell
 $env:DB_URL='jdbc:mysql://localhost:3306/room_booking?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8'
@@ -54,7 +54,7 @@ Flyway 首次启动会创建表并写入五间房间和演示账号：
 | `teacher-demo` | 已核验教师 | 查询、直接预约成功、取消本人预约 |
 | `manager-demo` | 已核验教师 + 负责人授权 | 审核身份、处理学生申请、停用和台账 |
 
-开发联调在每个请求添加 `X-User-Id`。生产环境应替换 `AuthConfig` 中的请求头适配器为真实会话或微信身份校验，并保留服务端角色判断。
+生产小程序先调用 `POST /api/v1/auth/wechat-login`，将 `wx.login()` 返回的 code 换成 Bearer 令牌；后续请求添加 `Authorization: Bearer <accessToken>`。首次登录用户再调用 `POST /api/v1/identity/reviews`。本地联调仍可使用 `X-User-Id`，但生产环境必须关闭该模式并保留服务端角色判断。
 
 ## 4. 关键业务规则
 
@@ -70,7 +70,7 @@ Flyway 首次启动会创建表并写入五间房间和演示账号：
 
 ## 5. 数据与安全边界
 
-数据库表结构见 `src/main/resources/db/migration/V1__init.sql`。日志不保存密码和会话凭证。正式部署需启用 HTTPS、替换开发身份适配器、限制数据库账号权限、配置备份和确认学院的数据保存期限。
+数据库表结构见 `src/main/resources/db/migration/`，`V3__wechat_auth_session.sql` 保存会话令牌哈希和过期时间。日志不保存密码和明文会话凭证。正式部署需启用 HTTPS、限制数据库账号权限、配置备份和确认学院的数据保存期限。
 
 ## 6. 验证
 

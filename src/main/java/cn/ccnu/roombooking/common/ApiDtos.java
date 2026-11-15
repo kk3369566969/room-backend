@@ -7,6 +7,8 @@ import java.util.*;
 
 public final class ApiDtos {
   private ApiDtos() {}
+  public record WechatLoginRequest(@NotBlank @Size(max=256) String code) {}
+  public record LoginResponse(String accessToken, String tokenType, long expiresIn, String externalId, boolean registered, Enums.IdentityStatus identityStatus, Enums.MemberType memberType) {}
   public record IdentitySubmitRequest(@NotBlank @Size(max=50) String name, @NotBlank @Size(max=30) String employeeNo, @NotNull Enums.MemberType memberType, @NotBlank @Pattern(regexp="1[3-9]\\d{9}") String phone) {}
   public record ReviewDecisionRequest(@NotNull Boolean approved, @Size(max=200) String reason) {}
   public record ReservationCreateRequest(@NotBlank String roomNo, @NotNull LocalDate date, @NotBlank String start, @NotBlank String end, @NotBlank @Size(max=200) String reason, @Positive int attendeeCount, @NotBlank @Pattern(regexp="1[3-9]\\d{9}") String phone, @Size(max=500) String note, @NotBlank @Size(max=64) String requestId) {}

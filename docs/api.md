@@ -1,6 +1,44 @@
 # 会议室预约系统接口文档
 
-Base URL：`http://localhost:8080/api/v1`。所有接口都需要 `X-User-Id` 请求头；身份提交允许该标识对应的用户尚未存在，服务端会先建立待审核用户。请求和响应使用 JSON，时间按北京时间处理。
+Base URL：`http://localhost:8080/api/v1`。生产登录使用微信小程序 `code` 换取服务端 Bearer 会话令牌；本地开发仍可使用 `X-User-Id` 请求头。请求和响应使用 JSON，时间按北京时间处理。
+
+## 微信登录
+
+### `POST /auth/wechat-login`
+
+小程序端先调用 `wx.login()`，将返回的临时 `code` 交给后端。后端调用微信 `jscode2session` 获取 `openid`，创建服务端会话，并返回访问令牌。后续请求统一添加：
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+请求体：
+
+```json
+{"code":"微信 wx.login 返回的临时 code"}
+```
+
+返回 `200`：
+
+```json
+{
+  "accessToken":"服务端随机令牌",
+  "tokenType":"Bearer",
+  "expiresIn":604800,
+  "externalId":"微信 openid",
+  "registered":false,
+  "identityStatus":null,
+  "memberType":null
+}
+```
+
+`registered=false` 表示该微信用户还没有提交身份资料；此时调用 `POST /identity/reviews` 完成业务注册。身份审核通过后，重新查询 `GET /identity/me` 获取当前状态。
+
+微信配置使用环境变量 `WECHAT_APP_ID`、`WECHAT_APP_SECRET`，可通过 `WECHAT_JSCODE2SESSION_URL` 指定测试环境的微信接口地址。未配置时返回 `WECHAT_NOT_CONFIGURED`。
+
+### `POST /auth/logout`
+
+需要 Bearer 令牌。服务端撤销当前会话，返回 `204 No Content`。
 
 ## 统一错误
 
@@ -19,7 +57,7 @@ Base URL：`http://localhost:8080/api/v1`。所有接口都需要 `X-User-Id` �
 
 ### `POST /identity/reviews`
 
-提交身份资料。字段：`name` 1—50字、`employeeNo` 1—30字符、`memberType` 为 `STUDENT` 或 `TEACHER`、`phone` 为中国大陆11位号码。
+提交身份资料。需要先完成微信登录。字段：`name` 1—50字、`employeeNo` 1—30字符、`memberType` 为 `STUDENT` 或 `TEACHER`、`phone` 为中国大陆11位号码。
 
 ```json
 {"name":"张三","employeeNo":"20260001","memberType":"STUDENT","phone":"13800000001"}

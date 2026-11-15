@@ -77,6 +77,10 @@
 - [X] T028 [P] Write endpoint request/response examples, error codes and privacy rules in `docs/api.md`
 - [X] T029 [P] Copy and align the OpenAPI contract with implemented endpoints in `docs/openapi.yaml`
 - [X] T030 Run the quickstart validation and fix compilation/runtime issues documented by `specs/001-meeting-room-booking/quickstart.md`
+- [X] T031 Add WeChat session entity, repository, migration and configurable session expiry in `src/main/java/cn/ccnu/roombooking/domain/` and `src/main/resources/db/migration/V3__wechat_auth_session.sql`
+- [X] T032 Implement `wx.login` code exchange, Bearer token issue and logout revocation in `src/main/java/cn/ccnu/roombooking/service/AuthService.java`, `WechatClient.java` and `web/AuthController.java`
+- [X] T033 Accept Bearer sessions in `src/main/java/cn/ccnu/roombooking/config/AuthConfig.java` while retaining `X-User-Id` for local development
+- [X] T034 Update API, OpenAPI, backend and frontend integration documentation for the WeChat login flow
 
 ## Dependencies & Execution Order
 
@@ -84,6 +88,7 @@
 - Foundational precedes every user story.
 - US1, US2, US3 and US4 are P1; implement sequentially because they share domain and service files. US5 follows lifecycle and notification support.
 - Documentation tasks T027-T029 can run in parallel after endpoints stabilize. T030 is final validation.
+- Authentication tasks T031-T033 precede protected business endpoint use; T034 follows the authentication contract update.
 
 ## Implementation Strategy
 

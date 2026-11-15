@@ -23,3 +23,9 @@ server:
     include-message: never
 app:
   timezone: Asia/Shanghai
+  wechat:
+    app-id: ${WECHAT_APP_ID:}
+    secret: ${WECHAT_APP_SECRET:}
+    jscode2session-url: ${WECHAT_JSCODE2SESSION_URL:https://api.weixin.qq.com/sns/jscode2session}
+  auth:
+    session-ttl-seconds: ${AUTH_SESSION_TTL_SECONDS:604800}

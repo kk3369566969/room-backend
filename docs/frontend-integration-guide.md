@@ -16,13 +16,21 @@
 | 测试环境 | 由部署环境提供 | 不要把地址写死在页面代码中 |
 | 生产环境 | HTTPS 地址 | 必须替换开发身份适配器 |
 
-每次请求都带 `X-User-Id`。当前后端用它模拟登录会话：
+生产环境先调用微信登录接口取得 Bearer 令牌，再在每次请求中添加 `Authorization: Bearer <accessToken>`。当前后端仍保留 `X-User-Id` 供本地开发联调：
 
 - `student-demo`：已核验学生
 - `teacher-demo`：已核验教师
 - `manager-demo`：已核验教师并拥有负责人权限
 
 真实小程序接入时，将 `X-User-Id` 替换为登录态令牌或服务端会话，不要让用户在页面上选择或修改角色。
+
+微信登录流程：
+
+1. 调用 `wx.login()` 获取临时 `code`。
+2. `POST /auth/wechat-login`，请求体为 `{ "code": "..." }`。
+3. 保存响应中的 `accessToken`，后续请求添加 `Authorization: Bearer <accessToken>`。
+4. `registered=false` 时进入身份提交页，调用 `POST /identity/reviews`。
+5. 退出登录调用 `POST /auth/logout`，成功后清除本地令牌。
 
 ### 2.2 HTTP 客户端行为
 
@@ -89,6 +97,7 @@ CONFIRMED -> CANCELLED
 
 接口：
 
+- `POST /auth/wechat-login`
 - `POST /identity/reviews`
 - `GET /identity/me`
 
@@ -104,6 +113,7 @@ CONFIRMED -> CANCELLED
 
 接口：
 
+- `POST /auth/wechat-login`
 - `GET /identity/me`
 - `POST /identity/reviews`
 

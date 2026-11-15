@@ -17,8 +17,59 @@ tags:
   - name: 通知
   - name: 管理
 security:
+  - bearerAuth: []
   - devUser: []
 paths:
+  /auth/wechat-login:
+    post:
+      tags: [身份]
+      summary: 微信小程序登录
+      description: 使用 wx.login 返回的临时 code 换取服务端 Bearer 会话令牌。
+      operationId: wechatLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WechatLoginRequest'
+            example:
+              code: wx-login-code
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          description: 微信登录服务失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '503':
+          description: 服务端未配置微信小程序凭证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /auth/logout:
+    post:
+      tags: [身份]
+      summary: 退出微信登录
+      operationId: wechatLogout
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 会话已撤销
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /identity/me:
     get:
       tags: [身份]
@@ -609,6 +660,11 @@ paths:
 
 components:
   securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: 由 /auth/wechat-login 返回的服务端会话令牌。
     devUser:
       type: apiKey
       in: header
@@ -676,6 +732,44 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    WechatLoginRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: wx.login 返回的一次性临时凭证
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, externalId, registered]
+      properties:
+        accessToken:
+          type: string
+          description: 服务端随机 Bearer 令牌
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+          format: int64
+          description: 令牌有效期，单位为秒
+          example: 604800
+        externalId:
+          type: string
+          description: 微信 openid 的服务端关联标识
+        registered:
+          type: boolean
+          description: 是否已经提交过身份资料
+        identityStatus:
+          allOf:
+            - $ref: '#/components/schemas/IdentityStatus'
+          nullable: true
+        memberType:
+          allOf:
+            - $ref: '#/components/schemas/MemberType'
+          nullable: true
     ErrorBody:
       type: object
       required: [code, message, timestamp]

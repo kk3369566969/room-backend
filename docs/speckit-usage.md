@@ -83,7 +83,7 @@ specs/001-meeting-room-booking/quickstart.md
 - Java 17 + Spring Boot 3.3。
 - Spring Web、JPA、Bean Validation、MySQL Connector/J、Flyway、Lombok。
 - MySQL 8 持久化，Flyway 管理版本迁移。
-- 首期用 `X-User-Id` 作为开发身份适配器，生产环境可替换为微信或统一身份认证。
+- 生产使用微信小程序 `wx.login` code 换取 Bearer 会话，本地保留 `X-User-Id` 开发身份适配器。
 - 预约写入、确认、取消和停用在事务内执行，重叠查询使用锁。
 - 公共日程和本人/负责人详情使用不同字段投影，保护隐私。
 
@@ -198,7 +198,7 @@ $speckit-converge 对照产物和代码补齐遗漏任务
 
 当前产物已经覆盖后端核心闭环和前端生成所需契约，但以下内容仍需要正式部署前补充：
 
-- 微信真实登录和会话校验。
+- 正式环境的微信 `appid/secret` 配置和小程序上线审核。
 - 学校统一身份认证是否获准接入。
 - 7060容量、设备和特殊限制的现场核实。
 - 数据保存期限、备份和恢复演练。

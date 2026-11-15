@@ -14,9 +14,9 @@
 
 ## Decision 3: Server-authoritative identity adapter
 
-- **Decision**: 首期用 `X-User-Id` 请求头关联本地用户记录，提供开发种子账号；生产接入微信/统一身份认证时替换适配器，不保存学校密码。
-- **Rationale**: 需求明确认证接入资格未落实，人工审核是当前可实施基线；请求头方式便于接口联调和课程演示。
-- **Alternatives considered**: 直接模拟微信登录会制造不真实的安全边界；让客户端提交角色不满足权限要求。
+- **Decision**: 生产使用微信小程序 `wx.login` code 换取 `openid`，后端签发随机 Bearer 会话令牌并只保存令牌哈希；本地保留 `X-User-Id` 请求头适配器和开发种子账号，不保存学校密码。
+- **Rationale**: 微信会话是小程序登录入口，业务资格仍需负责人审核；服务端会话令牌避免把 `openid` 直接当作业务授权凭证。
+- **Alternatives considered**: 用户名密码会引入需求未要求的密码生命周期和存储风险；让客户端提交角色或直接使用 `openid` 作为授权凭证不满足服务端权限要求。
 
 ## Decision 4: Transactional overlap and idempotency
 

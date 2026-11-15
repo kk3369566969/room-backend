@@ -83,7 +83,7 @@ room-backend/
     └── api.md
 ```
 
-**Structure Decision**: 单一 Maven Spring Boot 后端，按 domain/service/web 分层；迁移脚本和配置位于 resources，交付文档位于 docs。微信登录以可替换的请求头开发身份适配器开始，正式接入由部署配置替换。
+**Structure Decision**: 单一 Maven Spring Boot 后端，按 domain/service/web 分层；迁移脚本和配置位于 resources，交付文档位于 docs。生产认证使用微信 `wx.login` code 换取服务端 Bearer 会话，本地保留 `X-User-Id` 开发身份适配器；角色判断始终由服务端完成。
 
 ## Complexity Tracking
 

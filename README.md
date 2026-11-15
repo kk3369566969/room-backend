@@ -7,8 +7,9 @@
 - Java 17 + Spring Boot 3.3.5
 - MySQL 8 + Flyway
 - REST API 前缀：`/api/v1`
-- 当前使用 `X-User-Id` 作为开发环境身份适配器
-- 不包含微信小程序页面、真实微信登录、统一身份认证和生产部署配置
+- 支持微信小程序 `wx.login` 登录并返回 Bearer 会话令牌
+- `X-User-Id` 仅作为本地开发联调身份适配器
+- 不包含微信小程序页面、学校统一身份认证和生产部署配置
 
 ## 核心能力
 
@@ -65,6 +66,10 @@ mvn spring-boot:run
 
 ## 开发身份
 
+生产小程序登录流程：调用 `wx.login()` 获取临时 `code`，请求 `POST /api/v1/auth/wechat-login`，然后在后续请求中添加 `Authorization: Bearer <accessToken>`。首次登录且 `registered=false` 时，调用 `POST /api/v1/identity/reviews` 提交身份资料。
+
+退出登录调用 `POST /api/v1/auth/logout`。微信小程序配置通过 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET` 环境变量提供。
+
 开发联调时，在每个请求中添加 `X-User-Id`：
 
 | 请求头值 | 身份 | 权限 |
@@ -79,7 +84,7 @@ mvn spring-boot:run
 curl.exe -H "X-User-Id: student-demo" http://localhost:8080/api/v1/rooms
 ```
 
-生产环境必须替换 `AuthConfig` 中的开发身份适配器，使用真实会话或微信身份校验；角色和预约状态始终由服务端决定。
+`X-User-Id` 不应进入生产环境；生产环境使用微信登录返回的 Bearer 会话，角色和预约状态始终由服务端决定。
 
 ## 文档入口
 
@@ -119,7 +124,7 @@ node scripts/test_backend_api.mjs
 room-backend/
 ├── src/main/java/cn/ccnu/roombooking/
 │   ├── common/       DTO、错误处理、身份上下文和时间规则
-│   ├── config/       开发身份过滤器
+│   ├── config/       Bearer 会话和开发身份过滤器
 │   ├── domain/       实体、枚举和仓储
 │   ├── service/      事务业务规则和生命周期处理
 │   └── web/          REST 控制器
@@ -139,11 +144,11 @@ room-backend/
 - 学生的 `PENDING` 记录立即占用时段，教师的 `CONFIRMED` 记录直接占用时段。
 - 公共日程不返回其他用户的姓名、手机号、理由或审核信息。
 - 停用必须先预览影响，确认后取消重叠且尚未结束的预约；解除停用不会恢复已取消记录。
-- 数据库中不保存密码和会话凭证。
+- 数据库中不保存密码和明文会话凭证，只保存会话令牌哈希。
 
 ## 生产前事项
 
-- 接入真实登录和会话校验，移除或限制 `X-User-Id` 开发身份模式。
+- 配置正式微信小程序 `appid/secret`，限制并移除 `X-User-Id` 开发身份模式。
 - 启用 HTTPS、数据库最小权限和敏感配置管理。
 - 核实 7060 的容量、设备和特殊限制。
 - 根据学院要求确定个人信息保存期限、备份策略和恢复演练方案。
@@ -233,7 +238,7 @@ specs/001-meeting-room-booking/quickstart.md
 - Java 17 + Spring Boot 3.3。
 - Spring Web、JPA、Bean Validation、MySQL Connector/J、Flyway、Lombok。
 - MySQL 8 持久化，Flyway 管理版本迁移。
-- 首期用 `X-User-Id` 作为开发身份适配器，生产环境可替换为微信或统一身份认证。
+- 生产使用微信小程序 `wx.login` code 换取 Bearer 会话，本地保留 `X-User-Id` 开发身份适配器。
 - 预约写入、确认、取消和停用在事务内执行，重叠查询使用锁。
 - 公共日程和本人/负责人详情使用不同字段投影，保护隐私。
 
