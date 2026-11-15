@@ -115,7 +115,7 @@ paths:
               $ref: '#/components/schemas/IdentitySubmitRequest'
             example:
               name: 张三
-              employeeNo: S20260001
+              employeeNo: '20260001'
               memberType: STUDENT
               phone: '13800000001'
       responses:
@@ -748,6 +748,7 @@ components:
         accessToken:
           type: string
           description: 服务端随机 Bearer 令牌
+          example: 微信会话令牌示例
         tokenType:
           type: string
           enum: [Bearer]
@@ -759,17 +760,21 @@ components:
         externalId:
           type: string
           description: 微信 openid 的服务端关联标识
+          example: 微信用户标识示例
         registered:
           type: boolean
           description: 是否已经提交过身份资料
+          example: false
         identityStatus:
           allOf:
             - $ref: '#/components/schemas/IdentityStatus'
           nullable: true
+          example: PENDING
         memberType:
           allOf:
             - $ref: '#/components/schemas/MemberType'
           nullable: true
+          example: STUDENT
     ErrorBody:
       type: object
       required: [code, message, timestamp]
@@ -839,6 +844,7 @@ components:
           format: uuid
         externalId:
           type: string
+          example: 微信用户标识示例
         name:
           type: string
           example: 张三
