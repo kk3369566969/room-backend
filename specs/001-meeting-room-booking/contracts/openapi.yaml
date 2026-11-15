@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: Meeting Room Booking API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - devUser: []
+paths:
+  /identity/reviews:
+    post:
+      summary: Submit identity review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IdentitySubmitRequest' }
+      responses: {'201': {description: Created}}
+  /rooms:
+    get:
+      summary: List five rooms
+      responses: {'200': {description: Room list}}
+  /rooms/{roomNo}/schedule:
+    get:
+      summary: View public schedule for a date
+      parameters:
+        - {name: roomNo, in: path, required: true, schema: {type: string}}
+        - {name: date, in: query, required: true, schema: {type: string, format: date}}
+      responses: {'200': {description: Schedule}}
+  /reservations:
+    post:
+      summary: Create student pending or teacher confirmed reservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReservationCreateRequest'}
+      responses: {'201': {description: Created}, '409': {description: Conflict}}
+  /reservations/{id}/cancel:
+    post:
+      summary: Cancel own reservation before start
+      responses: {'200': {description: Cancelled}}
+  /notifications:
+    get:
+      summary: List own notifications
+      responses: {'200': {description: Notifications}}
+  /admin/reservations/{id}/approve:
+    post:
+      summary: Approve student reservation
+      responses: {'200': {description: Approved}}
+  /admin/reservations/{id}/reject:
+    post:
+      summary: Reject student reservation
+      responses: {'200': {description: Rejected}}
+  /admin/closures/preview:
+    post:
+      summary: Preview closure impact
+      responses: {'200': {description: Impact list}}
+  /admin/closures:
+    post:
+      summary: Create closure and cancel affected reservations
+      responses: {'201': {description: Created}}
+components:
+  securitySchemes:
+    devUser:
+      type: apiKey
+      in: header
+      name: X-User-Id
+  schemas:
+    IdentitySubmitRequest:
+      type: object
+      required: [name, employeeNo, memberType, phone]
+      properties:
+        name: {type: string, maxLength: 50}
+        employeeNo: {type: string, maxLength: 30}
+        memberType: {type: string, enum: [STUDENT, TEACHER]}
+        phone: {type: string, pattern: '^[1][3-9][0-9]{9}$'}
+    ReservationCreateRequest:
+      type: object
+      required: [roomNo, date, start, end, reason, attendeeCount, phone, requestId]
+      properties:
+        roomNo: {type: string}
+        date: {type: string, format: date}
+        start: {type: string, example: '09:00'}
+        end: {type: string, example: '10:30'}
+        reason: {type: string, maxLength: 200}
+        attendeeCount: {type: integer, minimum: 1}
+        phone: {type: string}
+        note: {type: string, maxLength: 500}
+        requestId: {type: string, maxLength: 64}

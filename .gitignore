@@ -1,0 +1,9 @@
+target/
+.m2/
+*.class
+*.jar
+.idea/
+.vscode/
+*.log
+.env
+application-local.yml

@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: CCNU Meeting Room Booking API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - devUser: []
+paths:
+  /identity/reviews:
+    post:
+      summary: Submit identity review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IdentitySubmitRequest'}
+      responses:
+        '201': {description: Created}
+  /identity/reviews/{id}/decision:
+    post:
+      summary: Approve or reject identity
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ReviewDecisionRequest'}}}
+      responses: {'200': {description: Processed}}
+  /rooms:
+    get:
+      summary: List rooms
+      responses: {'200': {description: Room list}}
+  /rooms/{roomNo}/schedule:
+    get:
+      summary: Public schedule
+      parameters:
+        - {name: roomNo, in: path, required: true, schema: {type: string}}
+        - {name: date, in: query, required: true, schema: {type: string, format: date}}
+      responses: {'200': {description: Schedule}}
+  /reservations:
+    get: {summary: List own reservations, responses: {'200': {description: Reservations}}}
+    post:
+      summary: Create reservation
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ReservationCreateRequest'}}}
+      responses: {'201': {description: Created}, '409': {description: Conflict}}
+  /reservations/{id}:
+    get:
+      summary: Reservation detail
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Detail}}
+  /reservations/{id}/cancel:
+    post:
+      summary: Cancel own reservation
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Cancelled}}
+  /notifications:
+    get: {summary: List own notifications, responses: {'200': {description: Notifications}}}
+  /notifications/{id}/read:
+    post: {summary: Mark notification read, responses: {'200': {description: Updated}}}
+  /admin/reservations:
+    get: {summary: Reservation ledger, responses: {'200': {description: Ledger}}}
+  /admin/reservations/{id}/approve:
+    post: {summary: Approve student reservation, responses: {'200': {description: Approved}}}
+  /admin/reservations/{id}/reject:
+    post: {summary: Reject student reservation, responses: {'200': {description: Rejected}}}
+  /admin/rooms/{roomNo}:
+    put: {summary: Update room metadata, responses: {'200': {description: Updated}}}
+  /admin/closures/preview:
+    post: {summary: Preview closure impact, responses: {'200': {description: Impact list}}}
+  /admin/closures:
+    post: {summary: Create closure and cancel impacts, responses: {'201': {description: Created}}}
+  /admin/closures/{id}/release:
+    post: {summary: Release closure, responses: {'200': {description: Released}}}
+  /admin/logs:
+    get: {summary: Operation logs, responses: {'200': {description: Logs}}}
+components:
+  securitySchemes:
+    devUser: {type: apiKey, in: header, name: X-User-Id}
+  schemas:
+    IdentitySubmitRequest:
+      type: object
+      required: [name, employeeNo, memberType, phone]
+      properties:
+        name: {type: string, maxLength: 50}
+        employeeNo: {type: string, maxLength: 30}
+        memberType: {type: string, enum: [STUDENT, TEACHER]}
+        phone: {type: string}
+    ReviewDecisionRequest:
+      type: object
+      required: [approved]
+      properties:
+        approved: {type: boolean}
+        reason: {type: string, maxLength: 200}
+    ReservationCreateRequest:
+      type: object
+      required: [roomNo, date, start, end, reason, attendeeCount, phone, requestId]
+      properties:
+        roomNo: {type: string}
+        date: {type: string, format: date}
+        start: {type: string, example: '09:00'}
+        end: {type: string, example: '10:30'}
+        reason: {type: string, maxLength: 200}
+        attendeeCount: {type: integer, minimum: 1}
+        phone: {type: string}
+        note: {type: string, maxLength: 500}
+        requestId: {type: string, maxLength: 64}
