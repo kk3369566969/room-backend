@@ -1,0 +1,1048 @@
+openapi: 3.0.3
+info:
+  title: 会议室预约系统 API
+  description: |
+    会议室预约系统后端接口契约，可直接导入 Apifox。
+    所有业务时间使用北京时间（Asia/Shanghai）。开发联调通过 X-User-Id 模拟登录身份。
+  version: 1.0.0
+  contact:
+    name: Room Booking Backend
+servers:
+  - url: http://localhost:8080/api/v1
+    description: 本地开发环境
+tags:
+  - name: 身份
+  - name: 会议室
+  - name: 预约
+  - name: 通知
+  - name: 管理
+security:
+  - devUser: []
+paths:
+  /identity/me:
+    get:
+      tags: [身份]
+      summary: 查询当前身份
+      operationId: getIdentityMe
+      responses:
+        '200':
+          description: 当前用户身份
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /identity/reviews:
+    get:
+      tags: [身份]
+      summary: 查询待审核身份
+      description: 负责人查询待审核身份记录。普通用户无权访问。
+      operationId: listIdentityReviews
+      responses:
+        '200':
+          description: 待审核记录
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IdentityReview'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+    post:
+      tags: [身份]
+      summary: 提交身份审核
+      description: 首次提交或被拒绝后的重新提交。X-User-Id 对应的用户可以尚未存在。
+      operationId: submitIdentityReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentitySubmitRequest'
+            example:
+              name: 张三
+              employeeNo: S20260001
+              memberType: STUDENT
+              phone: '13800000001'
+      responses:
+        '201':
+          description: 已提交
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: 学工号已绑定其他账号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /identity/reviews/{id}/decision:
+    post:
+      tags: [身份]
+      summary: 审核身份
+      description: 负责人通过或拒绝身份。拒绝时必须填写原因。
+      operationId: decideIdentityReview
+      parameters:
+        - $ref: '#/components/parameters/UuidPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewDecisionRequest'
+            examples:
+              approve:
+                value:
+                  approved: true
+              reject:
+                value:
+                  approved: false
+                  reason: 学工号资料无法核实
+      responses:
+        '200':
+          description: 审核完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityReview'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+        '404':
+          description: 审核记录不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '409':
+          description: 审核记录已处理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /admin/reviews:
+    get:
+      tags: [管理]
+      summary: 查询待审核身份（管理入口）
+      operationId: listAdminIdentityReviews
+      responses:
+        '200':
+          description: 待审核记录
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IdentityReview'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+
+  /rooms:
+    get:
+      tags: [会议室]
+      summary: 查询会议室列表
+      operationId: listRooms
+      responses:
+        '200':
+          description: 五间会议室
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Room'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IdentityRequired'
+
+  /rooms/{roomNo}:
+    get:
+      tags: [会议室]
+      summary: 查询会议室详情
+      operationId: getRoom
+      parameters:
+        - $ref: '#/components/parameters/RoomNoPath'
+      responses:
+        '200':
+          description: 会议室详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '403':
+          $ref: '#/components/responses/IdentityRequired'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  /rooms/{roomNo}/schedule:
+    get:
+      tags: [会议室]
+      summary: 查询会议室日程
+      description: 他人预约只返回统一占用状态，不返回个人信息；本人预约会返回 reservationId 和 own=true。
+      operationId: getRoomSchedule
+      parameters:
+        - $ref: '#/components/parameters/RoomNoPath'
+        - $ref: '#/components/parameters/DateQuery'
+      responses:
+        '200':
+          description: 日程条目
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduleItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/IdentityRequired'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  /reservations:
+    get:
+      tags: [预约]
+      summary: 查询本人预约历史
+      operationId: listMyReservations
+      responses:
+        '200':
+          description: 本人预约列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReservationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IdentityRequired'
+    post:
+      tags: [预约]
+      summary: 创建预约
+      description: 学生创建 PENDING，教师创建 CONFIRMED。角色、状态和处理人由服务端决定。
+      operationId: createReservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationCreateRequest'
+            example:
+              roomNo: '7081'
+              date: '2027-01-15'
+              start: '09:00'
+              end: '10:30'
+              reason: 课程讨论
+              attendeeCount: 8
+              phone: '13800000001'
+              note: 需要投影仪
+              requestId: client-uuid-001
+      responses:
+        '201':
+          description: 预约创建成功或幂等重试返回原记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/IdentityRequired'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+        '409':
+          description: 时段冲突、停用或其他业务冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /reservations/{id}:
+    get:
+      tags: [预约]
+      summary: 查询预约详情
+      description: 只能查询本人预约；负责人可以查询管理详情。
+      operationId: getReservation
+      parameters:
+        - $ref: '#/components/parameters/UuidPath'
+      responses:
+        '200':
+          description: 预约详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 预约不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /reservations/{id}/cancel:
+    post:
+      tags: [预约]
+      summary: 取消本人预约
+      description: 只能取消开始前的 PENDING 或 CONFIRMED 预约。
+      operationId: cancelReservation
+      parameters:
+        - $ref: '#/components/parameters/UuidPath'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+            example:
+              reason: 临时调整
+      responses:
+        '200':
+          description: 取消结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 预约不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '409':
+          description: 已开始或已处理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /notifications:
+    get:
+      tags: [通知]
+      summary: 查询本人通知
+      operationId: listNotifications
+      responses:
+        '200':
+          description: 通知列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IdentityRequired'
+
+  /notifications/{id}/read:
+    post:
+      tags: [通知]
+      summary: 标记通知已读
+      operationId: markNotificationRead
+      parameters:
+        - $ref: '#/components/parameters/UuidPath'
+      responses:
+        '200':
+          description: 已读通知
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 通知不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /admin/reservations:
+    get:
+      tags: [管理]
+      summary: 查询预约管理台账
+      operationId: listAdminReservations
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReservationStatus'
+      responses:
+        '200':
+          description: 预约台账
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReservationResponse'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+
+  /admin/reservations/{id}/approve:
+    post:
+      tags: [管理]
+      summary: 确认学生预约
+      description: 确认前重新检查容量、停用和时段冲突。
+      operationId: approveReservation
+      parameters:
+        - $ref: '#/components/parameters/UuidPath'
+      responses:
+        '200':
+          description: 已确认预约
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+        '404':
+          description: 预约不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '409':
+          description: 预约已处理、冲突或容量不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /admin/reservations/{id}/reject:
+    post:
+      tags: [管理]
+      summary: 拒绝学生预约
+      operationId: rejectReservation
+      parameters:
+        - $ref: '#/components/parameters/UuidPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+            example:
+              reason: 资料无法核实
+      responses:
+        '200':
+          description: 已拒绝预约
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+        '404':
+          description: 预约不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '409':
+          description: 预约已处理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /admin/rooms/{roomNo}:
+    put:
+      tags: [管理]
+      summary: 更新会议室资料
+      operationId: updateRoom
+      parameters:
+        - $ref: '#/components/parameters/RoomNoPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomUpdateRequest'
+            example:
+              capacity: 12
+              equipment: 投影仪、白板
+              restrictionText: 需提前登记
+              location: 综合楼七楼
+      responses:
+        '200':
+          description: 更新后的会议室
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  /admin/closures/preview:
+    post:
+      tags: [管理]
+      summary: 预览停用影响
+      operationId: previewClosure
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClosureRequest'
+            example:
+              roomNo: '7081'
+              startAt: '2027-01-15T13:00:00'
+              endAt: '2027-01-15T18:00:00'
+              reason: 设备维护
+              confirm: false
+      responses:
+        '200':
+          description: 受影响预约
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReservationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  /admin/closures:
+    post:
+      tags: [管理]
+      summary: 创建会议室停用
+      description: confirm 必须为 true；创建后会取消重叠且尚未结束的 PENDING/CONFIRMED 预约。
+      operationId: createClosure
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClosureRequest'
+            example:
+              roomNo: '7081'
+              startAt: '2027-01-15T13:00:00'
+              endAt: '2027-01-15T18:00:00'
+              reason: 设备维护
+              confirm: true
+      responses:
+        '201':
+          description: 停用创建成功，响应体为停用记录 UUID 字符串
+          content:
+            text/plain:
+              schema:
+                type: string
+                format: uuid
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  /admin/closures/{id}/release:
+    post:
+      tags: [管理]
+      summary: 解除会议室停用
+      description: 仅解除停用区间，不恢复已经取消的预约。
+      operationId: releaseClosure
+      parameters:
+        - $ref: '#/components/parameters/UuidPath'
+      responses:
+        '200':
+          description: 停用记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Closure'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+        '404':
+          description: 停用不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /admin/logs:
+    get:
+      tags: [管理]
+      summary: 查询操作日志
+      operationId: listOperationLogs
+      responses:
+        '200':
+          description: 最近 100 条操作日志
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OperationLog'
+        '403':
+          $ref: '#/components/responses/ManagerRequired'
+
+components:
+  securitySchemes:
+    devUser:
+      type: apiKey
+      in: header
+      name: X-User-Id
+      description: 开发环境身份标识，例如 student-demo、teacher-demo、manager-demo。
+  parameters:
+    UuidPath:
+      name: id
+      in: path
+      required: true
+      description: UUID
+      schema:
+        type: string
+        format: uuid
+    RoomNoPath:
+      name: roomNo
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: ['7060', '7081', '7091', '7119', '7052']
+    DateQuery:
+      name: date
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+        example: '2027-01-15'
+  responses:
+    Unauthorized:
+      description: 缺少有效的 X-User-Id
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Forbidden:
+      description: 无权访问资源
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    IdentityRequired:
+      description: 身份尚未核验通过
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    ManagerRequired:
+      description: 需要负责人权限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    ValidationError:
+      description: 请求参数不合法
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    RoomNotFound:
+      description: 会议室不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+          example: TIME_CONFLICT
+        message:
+          type: string
+          example: 该时段已被占用
+        details:
+          nullable: true
+          description: 参数校验错误详情
+        timestamp:
+          type: string
+          format: date-time
+          example: '2027-01-15T10:00:00+08:00'
+    StatusResponse:
+      type: object
+      required: [id, status, message]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: PENDING
+        message:
+          type: string
+          example: 身份资料已提交
+    IdentitySubmitRequest:
+      type: object
+      required: [name, employeeNo, memberType, phone]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        employeeNo:
+          type: string
+          minLength: 1
+          maxLength: 30
+        memberType:
+          type: string
+          enum: [STUDENT, TEACHER]
+        phone:
+          type: string
+          pattern: '^1[3-9][0-9]{9}$'
+    ReviewDecisionRequest:
+      type: object
+      required: [approved]
+      properties:
+        approved:
+          type: boolean
+        reason:
+          type: string
+          maxLength: 200
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        externalId:
+          type: string
+        name:
+          type: string
+        employeeNo:
+          type: string
+        memberType:
+          $ref: '#/components/schemas/MemberType'
+        phone:
+          type: string
+        identityStatus:
+          $ref: '#/components/schemas/IdentityStatus'
+        manager:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IdentityReview:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user:
+          $ref: '#/components/schemas/User'
+        nameSnapshot:
+          type: string
+        employeeNoSnapshot:
+          type: string
+        memberTypeSnapshot:
+          $ref: '#/components/schemas/MemberType'
+        phoneSnapshot:
+          type: string
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        reason:
+          type: string
+          nullable: true
+        reviewer:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+        handledAt:
+          type: string
+          format: date-time
+          nullable: true
+    Room:
+      type: object
+      required: [roomNo, location, infoStatus, openTime, closeTime]
+      properties:
+        roomNo:
+          type: string
+          example: '7081'
+        location:
+          type: string
+          example: 综合楼七楼
+        capacity:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: 12
+        equipment:
+          type: string
+          example: 待核实
+        restrictionText:
+          type: string
+          example: 待核实
+        infoStatus:
+          type: string
+          example: PARTIAL
+        openTime:
+          type: string
+          format: time
+          example: '08:00:00'
+        closeTime:
+          type: string
+          format: time
+          example: '22:00:00'
+    ScheduleItem:
+      type: object
+      required: [start, end, status, own]
+      properties:
+        reservationId:
+          type: string
+          format: uuid
+          nullable: true
+        start:
+          type: string
+          example: '09:00'
+        end:
+          type: string
+          example: '10:00'
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, CLOSED]
+        own:
+          type: boolean
+    ReservationCreateRequest:
+      type: object
+      required: [roomNo, date, start, end, reason, attendeeCount, phone, requestId]
+      properties:
+        roomNo:
+          type: string
+          example: '7081'
+        date:
+          type: string
+          format: date
+        start:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '09:00'
+        end:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '10:30'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 200
+        attendeeCount:
+          type: integer
+          minimum: 1
+        phone:
+          type: string
+          pattern: '^1[3-9][0-9]{9}$'
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 64
+    CancelRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 200
+          nullable: true
+    ReservationResponse:
+      type: object
+      required: [id, roomNo, date, start, end, reason, attendeeCount, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        roomNo:
+          type: string
+        date:
+          type: string
+          format: date
+        start:
+          type: string
+          example: '09:00'
+        end:
+          type: string
+          example: '10:30'
+        reason:
+          type: string
+        attendeeCount:
+          type: integer
+        phone:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ReservationStatus'
+        resultReason:
+          type: string
+          nullable: true
+        applicantName:
+          type: string
+          nullable: true
+        applicantPhone:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    RoomUpdateRequest:
+      type: object
+      properties:
+        capacity:
+          type: integer
+          minimum: 1
+          nullable: true
+        equipment:
+          type: string
+          nullable: true
+        restrictionText:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+    ClosureRequest:
+      type: object
+      required: [roomNo, startAt, endAt, reason, confirm]
+      properties:
+        roomNo:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 200
+        confirm:
+          type: boolean
+    Closure:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        room:
+          $ref: '#/components/schemas/Room'
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        manager:
+          $ref: '#/components/schemas/User'
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    NotificationResponse:
+      type: object
+      required: [id, type, content, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        businessId:
+          type: string
+          format: uuid
+          nullable: true
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+    OperationLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        operator:
+          $ref: '#/components/schemas/User'
+        objectType:
+          type: string
+          enum: [USER, REVIEW, RESERVATION, ROOM, CLOSURE]
+        objectId:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          type: string
+        result:
+          type: string
+        summary:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    MemberType:
+      type: string
+      enum: [STUDENT, TEACHER]
+    IdentityStatus:
+      type: string
+      enum: [UNVERIFIED, PENDING, APPROVED, REJECTED, REVOKED]
+    ReviewStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED]
+    ReservationStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, REJECTED, CANCELLED, EXPIRED, COMPLETED]
+    NotificationType:
+      type: string
+      enum: [IDENTITY, APPROVED, REJECTED, CANCELLED, EXPIRED, CLOSURE]

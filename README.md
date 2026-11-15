@@ -88,6 +88,7 @@ curl.exe -H "X-User-Id: student-demo" http://localhost:8080/api/v1/rooms
 | [docs/backend-guide.md](docs/backend-guide.md) | 后端架构、配置、数据库和部署说明 |
 | [docs/api.md](docs/api.md) | 接口、请求示例、错误码和隐私规则 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0 机器可读接口契约 |
+| [docs/apifox-openapi.yaml](docs/apifox-openapi.yaml) | 可直接导入 Apifox 的 OpenAPI 文件 |
 | [docs/frontend-integration-guide.md](docs/frontend-integration-guide.md) | 前端页面、状态模型和 AIGC 生成提示 |
 | [docs/speckit-usage.md](docs/speckit-usage.md) | 本项目使用 Speckit 的完整过程 |
 | [specs/001-meeting-room-booking/spec.md](specs/001-meeting-room-booking/spec.md) | 需求规格和验收条件 |
