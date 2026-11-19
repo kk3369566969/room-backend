@@ -66,11 +66,18 @@ mvn spring-boot:run
 
 ## 开发身份
 
-生产小程序登录流程：调用 `wx.login()` 获取临时 `code`，请求 `POST /api/v1/auth/wechat-login`，然后在后续请求中添加 `Authorization: Bearer <accessToken>`。首次登录且 `registered=false` 时，调用 `POST /api/v1/identity/reviews` 提交身份资料。
+生产小程序登录流程：调用 `wx.login()` 获取临时 `code`，请求 `POST /api/v1/auth/wechat-login` 获取会话令牌；若返回 `registered=false`，再用该令牌请求 `POST /api/v1/identity/reviews` 提交姓名、学工号、师生类型和手机号。后续请求统一添加 `Authorization: Bearer <accessToken>`。
 
 退出登录调用 `POST /api/v1/auth/logout`。微信小程序配置通过 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET` 环境变量提供。
 
-开发联调时，在每个请求中添加 `X-User-Id`：
+开发联调默认**不需要任何登录**：`app.auth.dev-mode` 默认开启，未带凭证的请求会自动以 `manager-demo`（负责人）身份执行，因此 Apifox / 浏览器 / curl 直接请求即可：
+
+```bash
+curl http://localhost:8080/api/v1/rooms
+curl http://localhost:8080/api/v1/admin/logs
+```
+
+需要切换成其他身份时，加 `X-User-Id` 请求头（仅开发模式生效，优先级高于默认账号）：
 
 | 请求头值 | 身份 | 权限 |
 |---|---|---|
@@ -78,13 +85,39 @@ mvn spring-boot:run
 | `teacher-demo` | 已核验教师 | 查询、直接预约成功、取消本人预约 |
 | `manager-demo` | 已核验教师 + 负责人 | 身份审核、预约处理、停用和台账 |
 
-示例：
-
 ```powershell
 curl.exe -H "X-User-Id: student-demo" http://localhost:8080/api/v1/rooms
 ```
 
-`X-User-Id` 不应进入生产环境；生产环境使用微信登录返回的 Bearer 会话，角色和预约状态始终由服务端决定。
+开发模式相关配置：
+
+| 配置 | 环境变量 | 默认值 | 说明 |
+|---|---|---|---|
+| `app.auth.dev-mode` | `AUTH_DEV_MODE` | `true` | 关闭后 `X-User-Id` 与默认账号都不再生效，接口只认 Bearer 令牌 |
+| `app.auth.dev-default-user` | `AUTH_DEV_USER` | `manager-demo` | 未带凭证时使用的账号，对应 `app_user.external_id` |
+
+启动日志会打印一条 WARN 提示开发模式已开启。**上线前必须设置 `AUTH_DEV_MODE=false`，或激活 `prod` / `production` profile**——检测到生产 profile 时即使配置为 `true` 也会被强制关闭并打 ERROR 日志。生产环境使用微信登录返回的 Bearer 会话，角色和预约状态始终由服务端决定。
+
+## 日志
+
+控制台与 `logs/room-booking.log`（按 20MB 滚动、保留 7 天，UTF-8 编码）同时输出，每行格式：
+
+```text
+2026-11-19 11:23:46.590 INFO  [a7c84abb] [M-DEMO] c.c.r.s.impl.AdminServiceImpl - [预约审批] 通过 id=6ccf... room=7091 date=2028-05-05 14:00-15:30 负责人=M-DEMO
+```
+
+- 第一个方括号是 **traceId**：每个请求一个 8 位标识，同一次请求的业务日志、异常日志、访问日志都能用它串起来；客户端也可带 `X-Trace-Id` 复用同一个值，响应头会原样回传。
+- 第二个方括号是 **当前用户**：登录态解析出的学工号（无档案时是 externalId 前 6 位），未登录显示 `anon`。
+- 业务日志统一带中文标记，便于直接 grep：`[登录]`、`[身份提交]`、`[身份审核]`、`[预约创建]`、`[预约取消]`、`[预约审批]`、`[状态结算]`、`[停用创建]`、`[停用解除]`、`[房间更新]`、`[访问]`、`[业务异常]`、`[参数校验失败]`。
+
+分级约定：正常状态变更为 INFO；被拒绝的调用（时段冲突、越权、参数不合法）为 WARN；未预期异常为 ERROR 并带堆栈。排查问题时：
+
+```bash
+grep "<traceId>" logs/room-booking.log          # 追一次请求的完整链路
+grep "\[预约创建\]" logs/room-booking.log | tail  # 看最近的预约流水
+```
+
+需要看 MyBatis 实际执行的 SQL 时，把 `application.yml` 中 `cn.ccnu.roombooking.mapper` 的级别改为 `DEBUG`。
 
 ## 文档入口
 
@@ -123,13 +156,20 @@ node scripts/test_backend_api.mjs
 ```text
 room-backend/
 ├── src/main/java/cn/ccnu/roombooking/
-│   ├── common/       DTO、错误处理、身份上下文和时间规则
-│   ├── config/       Bearer 会话和开发身份过滤器
-│   ├── domain/       实体、枚举和仓储
-│   ├── service/      事务业务规则和生命周期处理
-│   └── web/          REST 控制器
+│   ├── controller/   REST 控制器，只做参数接收与响应封装
+│   ├── service/      业务接口，只声明能力与契约（含 Javadoc）
+│   ├── service/impl/ 业务实现，事务边界与规则细节都在这里
+│   ├── mapper/       MyBatis-Plus Mapper，单表 CRUD 继承 BaseMapper
+│   ├── entity/       数据库实体（@TableName 映射表结构）
+│   ├── dto/          request 入参 / response 出参
+│   ├── enums/        状态与类型枚举
+│   ├── config/       MyBatis-Plus、审计字段填充、配置属性
+│   ├── security/     登录态过滤器、AuthContext、令牌工具
+│   ├── client/       微信登录等外部服务客户端
+│   └── common/       统一异常、错误体、时间规则；log/ 下是 traceId 过滤器与脱敏工具
 ├── src/main/resources/
 │   ├── application.yml
+│   ├── mapper/       复杂 SQL（如加锁的重叠查询）
 │   └── db/migration/ Flyway 迁移脚本
 ├── docs/              后端、接口、前端和 Speckit 文档
 ├── specs/             需求、计划、数据模型、契约和任务
@@ -148,7 +188,7 @@ room-backend/
 
 ## 生产前事项
 
-- 配置正式微信小程序 `appid/secret`，限制并移除 `X-User-Id` 开发身份模式。
+- 配置正式微信小程序 `appid/secret`，并设置 `AUTH_DEV_MODE=false`（或激活 `prod` profile）彻底关闭开发身份模式。
 - 启用 HTTPS、数据库最小权限和敏感配置管理。
 - 核实 7060 的容量、设备和特殊限制。
 - 根据学院要求确定个人信息保存期限、备份策略和恢复演练方案。
@@ -236,7 +276,7 @@ specs/001-meeting-room-booking/quickstart.md
 关键技术决策：
 
 - Java 17 + Spring Boot 3.3。
-- Spring Web、JPA、Bean Validation、MySQL Connector/J、Flyway、Lombok。
+- Spring Web、MyBatis-Plus、Bean Validation、MySQL Connector/J、Flyway、Lombok。
 - MySQL 8 持久化，Flyway 管理版本迁移。
 - 生产使用微信小程序 `wx.login` code 换取 Bearer 会话，本地保留 `X-User-Id` 开发身份适配器。
 - 预约写入、确认、取消和停用在事务内执行，重叠查询使用锁。

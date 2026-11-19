@@ -1,68 +1,35 @@
 package cn.ccnu.roombooking.service;
 
-import cn.ccnu.roombooking.common.*;
-import cn.ccnu.roombooking.domain.*;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import java.nio.charset.StandardCharsets;
-import java.security.*;
-import java.time.LocalDateTime;
-import java.util.*;
+import cn.ccnu.roombooking.dto.response.LoginResponse;
 
-@Service
-public class AuthService {
-  private final WechatClient wechat;
-  private final AuthSessionRepository sessions;
-  private final UserRepository users;
-  private final AuthContext auth;
-  private final long ttlSeconds;
+/**
+ * 登录鉴权服务。
+ *
+ * <p>负责微信小程序登录凭证换取系统会话令牌，以及退出登录时吊销当前会话。
+ * 会话令牌只以摘要形式落库，原始令牌仅在下发时出现一次。
+ *
+ * <p>实现类：{@link cn.ccnu.roombooking.service.impl.AuthServiceImpl}
+ */
+public interface AuthService {
 
-  public AuthService(WechatClient wechat, AuthSessionRepository sessions, UserRepository users, AuthContext auth,
-                     @Value("${app.auth.session-ttl-seconds:604800}") long ttlSeconds) {
-    this.wechat = wechat;
-    this.sessions = sessions;
-    this.users = users;
-    this.auth = auth;
-    this.ttlSeconds = ttlSeconds;
-  }
+  /**
+   * 使用微信登录凭证换取系统会话令牌。
+   *
+   * <p>流程：向微信接口换取 externalId → 生成随机令牌并落库（不保存明文，仅存 SHA-256 摘要）
+   * → 按 externalId 判断该用户是否已建立身份档案，把结果一并返回给前端以决定后续引导页。
+   *
+   * @param code 微信小程序 wx.login 返回的一次性 code，由微信侧校验并换取 openid
+   * @return 会话令牌、有效期、externalId 以及用户档案的建立情况与身份状态
+   * @throws cn.ccnu.roombooking.common.ApiException 微信凭证无效（WECHAT_LOGIN_FAILED）时抛出
+   */
+  LoginResponse login(String code);
 
-  @Transactional
-  public ApiDtos.LoginResponse login(String code) {
-    String externalId = wechat.exchangeCode(code);
-    String token = randomToken();
-    LocalDateTime now = LocalDateTime.now();
-    var session = new AuthSession();
-    session.setId(UUID.randomUUID());
-    session.setTokenHash(hash(token));
-    session.setExternalId(externalId);
-    session.setCreatedAt(now);
-    session.setExpiresAt(now.plusSeconds(ttlSeconds));
-    sessions.save(session);
-    var user = users.findByExternalId(externalId).orElse(null);
-    return new ApiDtos.LoginResponse(token, "Bearer", ttlSeconds, externalId, user != null,
-        user == null ? null : user.getIdentityStatus(), user == null ? null : user.getMemberType());
-  }
-
-  @Transactional
-  public void logout() {
-    var session = auth.session();
-    session.setRevokedAt(LocalDateTime.now());
-    sessions.save(session);
-  }
-
-  public static String hash(String token) {
-    try {
-      byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(digest);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 unavailable", e);
-    }
-  }
-
-  private String randomToken() {
-    byte[] bytes = new byte[32];
-    new SecureRandom().nextBytes(bytes);
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-  }
+  /**
+   * 退出登录，吊销当前请求携带的会话。
+   *
+   * <p>把会话的吊销时间置为当前时间；已吊销或已过期的会话重复调用不报错，保证幂等。
+   *
+   * @throws cn.ccnu.roombooking.common.ApiException 当前请求没有有效会话（UNAUTHORIZED）时抛出
+   */
+  void logout();
 }

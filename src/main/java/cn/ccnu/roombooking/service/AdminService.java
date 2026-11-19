@@ -1,24 +1,110 @@
 package cn.ccnu.roombooking.service;
 
-import cn.ccnu.roombooking.common.*;
-import cn.ccnu.roombooking.domain.*;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import java.time.*;
-import java.util.*;
+import cn.ccnu.roombooking.dto.request.ClosureRequest;
+import cn.ccnu.roombooking.dto.request.RoomUpdateRequest;
+import cn.ccnu.roombooking.dto.response.ClosureResponse;
+import cn.ccnu.roombooking.dto.response.OperationLogResponse;
+import cn.ccnu.roombooking.dto.response.ReservationResponse;
+import cn.ccnu.roombooking.dto.response.RoomResponse;
+import cn.ccnu.roombooking.enums.ReservationStatus;
+import java.util.List;
+import java.util.UUID;
 
-@Service
-public class AdminService {
-  private final AuthContext auth; private final IdentityService identity; private final ReservationRepository reservations; private final RoomRepository rooms; private final ClosureRepository closures; private final AuditService audit; private final OperationLogRepository logs;
-  public AdminService(AuthContext auth, IdentityService identity, ReservationRepository reservations, RoomRepository rooms, ClosureRepository closures, AuditService audit, OperationLogRepository logs) { this.auth=auth; this.identity=identity; this.reservations=reservations; this.rooms=rooms; this.closures=closures; this.audit=audit; this.logs=logs; }
-  public List<IdentityReview> reviews() { return identity.pending(); }
-  @Transactional public Reservation decide(UUID id, boolean approve, String reason) { User manager=auth.manager(); Reservation r=reservations.findById(id).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"RESERVATION_NOT_FOUND","预约不存在")); if(r.getStatus()!=Enums.ReservationStatus.PENDING) throw new ApiException(HttpStatus.CONFLICT,"RESERVATION_HANDLED","预约已处理"); if(!approve && (reason==null||reason.isBlank())) throw new ApiException(HttpStatus.BAD_REQUEST,"REASON_REQUIRED","拒绝必须填写原因"); if(approve) { var conflicts=reservations.findOverlappingForUpdate(r.getRoom(),r.getReservationDate(),r.getStartMinute(),r.getEndMinute(),List.of(Enums.ReservationStatus.PENDING,Enums.ReservationStatus.CONFIRMED)); if(conflicts.stream().anyMatch(x->!x.getId().equals(r.getId()))) throw new ApiException(HttpStatus.CONFLICT,"TIME_CONFLICT","确认时段已被占用"); if(r.getRoom().getCapacity()!=null&&r.getAttendeeCount()>r.getRoom().getCapacity()) throw new ApiException(HttpStatus.CONFLICT,"CAPACITY_EXCEEDED","当前容量不足"); r.setStatus(Enums.ReservationStatus.CONFIRMED); } else { r.setStatus(Enums.ReservationStatus.REJECTED); } r.setHandledBy(manager); r.setHandledAt(LocalDateTime.now()); r.setResultReason(reason); r.setUpdatedAt(LocalDateTime.now()); var saved=reservations.save(r); audit.notify(r.getApplicant(),approve?Enums.NotificationType.APPROVED:Enums.NotificationType.REJECTED,r.getId(),approve?"学生预约已确认":"学生预约被拒绝："+reason); audit.log(manager,Enums.ObjectType.RESERVATION,r.getId(),approve?"APPROVE":"REJECT","SUCCESS",reason); return saved; }
-  public List<Reservation> ledger(Enums.ReservationStatus status) { auth.manager(); return status==null?reservations.findAll():reservations.findByStatus(status); }
-  public List<OperationLog> logs() { auth.manager(); return logs.findTop100ByOrderByCreatedAtDesc(); }
-  public Room updateRoom(String roomNo, ApiDtos.RoomUpdateRequest req) { User manager=auth.manager(); Room room=rooms.findByRoomNo(roomNo).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"ROOM_NOT_FOUND","会议室不存在")); if(req.capacity()!=null&&req.capacity()<=0) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_CAPACITY","容量必须为正整数"); if(req.capacity()!=null) room.setCapacity(req.capacity()); if(req.equipment()!=null) room.setEquipment(req.equipment()); if(req.restrictionText()!=null) room.setRestrictionText(req.restrictionText()); if(req.location()!=null) room.setLocation(req.location()); var saved=rooms.save(room); audit.log(manager,Enums.ObjectType.ROOM,room.getId(),"UPDATE","SUCCESS","更新房间资料"); return saved; }
-  public List<Reservation> closurePreview(ApiDtos.ClosureRequest req) { User manager=auth.manager(); Room room=rooms.findByRoomNo(req.roomNo()).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"ROOM_NOT_FOUND","会议室不存在")); if(!req.endAt().isAfter(req.startAt())) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_INTERVAL","停用结束必须晚于开始"); var out=new ArrayList<Reservation>(); for(Reservation r: reservations.findByStatus(Enums.ReservationStatus.PENDING)) if(overlap(r,room,req.startAt(),req.endAt())) out.add(r); for(Reservation r: reservations.findByStatus(Enums.ReservationStatus.CONFIRMED)) if(overlap(r,room,req.startAt(),req.endAt())) out.add(r); return out; }
-  private boolean overlap(Reservation r,Room room,LocalDateTime start,LocalDateTime end) { if(!r.getRoom().getId().equals(room.getId())) return false; var rs=TimeSupport.at(r.getReservationDate(),r.getStartMinute()); var re=TimeSupport.at(r.getReservationDate(),r.getEndMinute()); return rs.isBefore(end)&&re.isAfter(start); }
-  @Transactional public Closure createClosure(ApiDtos.ClosureRequest req) { User manager=auth.manager(); if(!Boolean.TRUE.equals(req.confirm())) throw new ApiException(HttpStatus.BAD_REQUEST,"CONFIRM_REQUIRED","停用需要确认影响范围"); Room room=rooms.findByRoomNo(req.roomNo()).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"ROOM_NOT_FOUND","会议室不存在")); var affected=closurePreview(req); var c=new Closure(); c.setId(UUID.randomUUID()); c.setRoom(room); c.setStartAt(req.startAt()); c.setEndAt(req.endAt()); c.setReason(req.reason()); c.setManager(manager); c.setActive(true); c.setCreatedAt(LocalDateTime.now()); closures.save(c); for(Reservation r: affected) { if(r.getStatus()==Enums.ReservationStatus.PENDING||r.getStatus()==Enums.ReservationStatus.CONFIRMED) { r.setStatus(Enums.ReservationStatus.CANCELLED); r.setResultReason("会议室停用："+req.reason()); r.setHandledBy(manager); r.setHandledAt(LocalDateTime.now()); r.setUpdatedAt(LocalDateTime.now()); reservations.save(r); audit.notify(r.getApplicant(),Enums.NotificationType.CLOSURE,r.getId(),"预约因会议室停用被取消："+req.reason()); } } audit.log(manager,Enums.ObjectType.CLOSURE,c.getId(),"CREATE","SUCCESS","影响预约数="+affected.size()); return c; }
-  @Transactional public Closure releaseClosure(UUID id) { User manager=auth.manager(); Closure c=closures.findById(id).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"CLOSURE_NOT_FOUND","停用不存在")); c.setActive(false); audit.log(manager,Enums.ObjectType.CLOSURE,c.getId(),"RELEASE","SUCCESS","解除停用"); return closures.save(c); }
+/**
+ * 负责人后台服务：预约审批、台账、会议室资料维护、停用与操作日志。
+ *
+ * <p>所有方法都要求调用者具备负责人权限；除查询类方法外，写操作都会同步写入操作日志，
+ * 需要通知申请人的场景还会投递站内通知。
+ *
+ * <p>实现类：{@link cn.ccnu.roombooking.service.impl.AdminServiceImpl}
+ */
+public interface AdminService {
+
+  /**
+   * 审批一条待确认的学生预约。
+   *
+   * <p>通过前会再次校验时段冲突与容量，避免「提交时可用、审批时已被占」的情况；
+   * 拒绝时必须填写原因。处理完成后通知申请人并记录操作日志。
+   *
+   * @param reservationId 预约 ID
+   * @param approve       true 表示确认通过，false 表示拒绝
+   * @param reason        审批意见；拒绝时必填，通过时可为 null
+   * @return 处理后的预约详情
+   * @throws cn.ccnu.roombooking.common.ApiException 预约不存在（RESERVATION_NOT_FOUND）、
+   *                                                 已处理过（RESERVATION_HANDLED）、
+   *                                                 拒绝未填原因（REASON_REQUIRED）、
+   *                                                 时段已被占用（TIME_CONFLICT）、
+   *                                                 容量不足（CAPACITY_EXCEEDED）、
+   *                                                 非负责人（MANAGER_REQUIRED）时抛出
+   */
+  ReservationResponse decide(UUID reservationId, boolean approve, String reason);
+
+  /**
+   * 查询预约台账，可按状态过滤。
+   *
+   * @param status 预约状态，传 null 表示查询全部
+   * @return 预约列表，按数据库返回顺序排列，包含完整信息
+   * @throws cn.ccnu.roombooking.common.ApiException 非负责人（MANAGER_REQUIRED）时抛出
+   */
+  List<ReservationResponse> ledger(ReservationStatus status);
+
+  /**
+   * 更新会议室资料，只覆盖请求中非空的字段（局部更新）。
+   *
+   * @param roomNo  会议室编号
+   * @param request 容量、设备、使用限制、位置，均可为 null 表示不修改
+   * @return 更新后的会议室资料
+   * @throws cn.ccnu.roombooking.common.ApiException 会议室不存在（ROOM_NOT_FOUND）、
+   *                                                 容量非正整数（INVALID_CAPACITY）、
+   *                                                 非负责人（MANAGER_REQUIRED）时抛出
+   */
+  RoomResponse updateRoom(String roomNo, RoomUpdateRequest request);
+
+  /**
+   * 停用影响范围预览：列出该时段内将被取消的预约，供负责人在确认前核对。
+   *
+   * <p>只读，不产生任何数据变更。
+   *
+   * @param request 会议室编号与停用起止时间
+   * @return 会被取消的预约列表
+   * @throws cn.ccnu.roombooking.common.ApiException 会议室不存在（ROOM_NOT_FOUND）、
+   *                                                 结束时间不晚于开始时间（INVALID_INTERVAL）、
+   *                                                 非负责人（MANAGER_REQUIRED）时抛出
+   */
+  List<ReservationResponse> closurePreview(ClosureRequest request);
+
+  /**
+   * 创建会议室停用区间，并自动取消区间内所有占用中的预约。
+   *
+   * <p>必须带上 confirm=true，用于强制前端先调用过 {@link #closurePreview} 并让用户确认影响范围。
+   * 被取消的预约逐条通知申请人，最后记录一条包含影响预约数的操作日志。
+   *
+   * @param request 会议室编号、停用起止时间、停用原因与确认标记
+   * @return 新建的停用区间 ID
+   * @throws cn.ccnu.roombooking.common.ApiException 未确认影响范围（CONFIRM_REQUIRED）、
+   *                                                 会议室不存在（ROOM_NOT_FOUND）、
+   *                                                 结束时间不晚于开始时间（INVALID_INTERVAL）、
+   *                                                 非负责人（MANAGER_REQUIRED）时抛出
+   */
+  UUID createClosure(ClosureRequest request);
+
+  /**
+   * 解除停用，恢复会议室的正常预约。
+   *
+   * <p>只把停用区间置为失效，不会自动恢复此前被取消的预约——申请人需要重新预约。
+   *
+   * @param closureId 停用区间 ID
+   * @return 解除后的停用区间详情
+   * @throws cn.ccnu.roombooking.common.ApiException 停用记录不存在（CLOSURE_NOT_FOUND）、
+   *                                                 非负责人（MANAGER_REQUIRED）时抛出
+   */
+  ClosureResponse releaseClosure(UUID closureId);
+
+  /**
+   * 查询最近的操作日志（按时间倒序，最多 100 条）。
+   *
+   * @return 操作日志列表，携带操作人信息
+   * @throws cn.ccnu.roombooking.common.ApiException 非负责人（MANAGER_REQUIRED）时抛出
+   */
+  List<OperationLogResponse> logs();
 }

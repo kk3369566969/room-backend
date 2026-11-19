@@ -6,21 +6,48 @@ spring:
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:1234}
     driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: Asia/Shanghai
   flyway:
     enabled: true
     baseline-on-migrate: true
+    locations: classpath:db/migration
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # UUID <-> BINARY(16) 等自定义类型处理器所在包
+  type-handlers-package: cn.ccnu.roombooking.config.mybatis
+  configuration:
+    map-underscore-to-camel-case: true
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+  global-config:
+    banner: false
+    db-config:
+      id-type: input
+
 server:
   port: ${SERVER_PORT:8080}
   error:
     include-message: never
+
+# 日志：控制台 + 滚动文件，统一带 traceId 与当前用户，便于按一次请求或一个人排查
+logging:
+  level:
+    root: INFO
+    cn.ccnu.roombooking: INFO
+    # 想看具体 SQL 时把下面这行改成 DEBUG
+    cn.ccnu.roombooking.mapper: INFO
+  file:
+    name: ${LOG_FILE:logs/room-booking.log}
+  # 文件统一按 UTF-8 写，否则 Windows 默认 GBK 会让中文日志乱码、也不好 grep
+  charset:
+    file: UTF-8
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 7
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%X{traceId:-no-trace}] [%X{user:-anon}] %cyan(%logger{36}) - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-no-trace}] [%X{user:-anon}] %logger{36} - %msg%n"
+
 app:
   timezone: Asia/Shanghai
   wechat:
@@ -29,3 +56,8 @@ app:
     jscode2session-url: ${WECHAT_JSCODE2SESSION_URL:https://api.weixin.qq.com/sns/jscode2session}
   auth:
     session-ttl-seconds: ${AUTH_SESSION_TTL_SECONDS:604800}
+    # 开发模式：开启后免登录。未带任何凭证时自动使用 dev-default-user 身份，
+    # 也可用 X-User-Id 请求头临时切换成 student-demo / teacher-demo。
+    # 上线前必须设为 false（或激活 prod profile，会被强制关闭）。
+    dev-mode: ${AUTH_DEV_MODE:true}
+    dev-default-user: ${AUTH_DEV_USER:manager-demo}

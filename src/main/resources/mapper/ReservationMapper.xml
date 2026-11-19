@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.ccnu.roombooking.mapper.ReservationMapper">
+
+  <!--
+    查询同房间、同日期、与 [startMinute, endMinute) 重叠的预约，并加行锁。
+    重叠判定：已有开始 &lt; 新结束 且 已有结束 &gt; 新开始。
+  -->
+  <select id="selectOverlappingForUpdate" resultType="cn.ccnu.roombooking.entity.Reservation">
+    SELECT id, room_id, applicant_id, applicant_name, applicant_phone, reservation_date,
+           start_minute, end_minute, reason, attendee_count, note, status, request_id,
+           handled_by, handled_at, result_reason, created_at, updated_at
+    FROM reservation
+    WHERE room_id = #{roomId}
+      AND reservation_date = #{date}
+      AND start_minute &lt; #{endMinute}
+      AND end_minute &gt; #{startMinute}
+      AND status IN
+      <foreach collection="statuses" item="status" open="(" separator="," close=")">
+        #{status}
+      </foreach>
+    FOR UPDATE
+  </select>
+
+</mapper>

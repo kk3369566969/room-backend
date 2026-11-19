@@ -105,7 +105,7 @@ paths:
     post:
       tags: [身份]
       summary: 提交身份审核
-      description: 首次提交或被拒绝后的重新提交。X-User-Id 对应的用户可以尚未存在。
+      description: 微信登录后首次提交或被拒绝后的重新提交。生产环境使用 Bearer 会话，开发联调可使用 X-User-Id；开发身份对应的用户可以尚未存在。
       operationId: submitIdentityReview
       requestBody:
         required: true
@@ -696,7 +696,7 @@ components:
         example: '2027-01-15'
   responses:
     Unauthorized:
-      description: 缺少有效的 X-User-Id
+      description: 缺少有效的 Bearer 会话或 X-User-Id
       content:
         application/json:
           schema:

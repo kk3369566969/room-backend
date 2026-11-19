@@ -10,7 +10,7 @@
 
 - Java 17
 - Spring Boot 3.3.5 / Spring MVC
-- Spring Data JPA / Hibernate
+- MyBatis-Plus 3.5.9
 - MySQL 8
 - Flyway 数据库迁移
 - Jakarta Bean Validation
@@ -19,11 +19,18 @@
 
 ```text
 src/main/java/cn/ccnu/roombooking/
-├── common/       错误结构、请求身份和 DTO
-├── config/       Bearer 会话和 X-User-Id 开发身份过滤器
-├── domain/       实体、枚举、仓储和锁定查询
-├── service/      事务业务规则和生命周期处理
-└── web/          REST 控制器
+├── controller/   REST 控制器
+├── service/      业务接口层，声明能力并附 Javadoc 契约
+├── service/impl/ 业务实现层，事务边界与规则细节
+├── mapper/       MyBatis-Plus Mapper（继承 BaseMapper）
+├── entity/       表映射实体
+├── dto/          request / response
+├── enums/        枚举
+├── config/       MyBatis-Plus 与配置属性
+├── security/     登录态与鉴权
+├── client/       外部服务客户端
+└── common/       统一错误与时间规则
+src/main/resources/mapper/ReservationMapper.xml
 src/main/resources/db/migration/V1__init.sql
 docs/api.md
 docs/openapi.yaml
@@ -54,7 +61,9 @@ Flyway 首次启动会创建表并写入五间房间和演示账号：
 | `teacher-demo` | 已核验教师 | 查询、直接预约成功、取消本人预约 |
 | `manager-demo` | 已核验教师 + 负责人授权 | 审核身份、处理学生申请、停用和台账 |
 
-生产小程序先调用 `POST /api/v1/auth/wechat-login`，将 `wx.login()` 返回的 code 换成 Bearer 令牌；后续请求添加 `Authorization: Bearer <accessToken>`。首次登录用户再调用 `POST /api/v1/identity/reviews`。本地联调仍可使用 `X-User-Id`，但生产环境必须关闭该模式并保留服务端角色判断。
+本地默认**免登录**：`app.auth.dev-mode=true` 时，未带任何凭证的请求自动以 `app.auth.dev-default-user`（默认 `manager-demo`）身份执行；带 `X-User-Id` 可临时切换成学生或教师。启动日志会打 WARN 提示。关闭方式：`AUTH_DEV_MODE=false`，或激活 `prod` / `production` profile（生产 profile 下即使配置为 true 也会被强制关闭并打 ERROR）。
+
+生产小程序先调用 `POST /api/v1/auth/wechat-login`，将 `wx.login()` 返回的 code 换成 Bearer 令牌；后续请求添加 `Authorization: Bearer <accessToken>`。首次登录用户再调用 `POST /api/v1/identity/reviews`。开发身份在 `dev-mode` 关闭后完全失效，服务端角色判断始终保留。
 
 ## 4. 关键业务规则
 
@@ -72,6 +81,15 @@ Flyway 首次启动会创建表并写入五间房间和演示账号：
 
 数据库表结构见 `src/main/resources/db/migration/`，`V3__wechat_auth_session.sql` 保存会话令牌哈希和过期时间。日志不保存密码和明文会话凭证。正式部署需启用 HTTPS、限制数据库账号权限、配置备份和确认学院的数据保存期限。
 
-## 6. 验证
+## 6. 日志
+
+- 落点：控制台 + `logs/room-booking.log`（20MB 滚动、保留 7 天、UTF-8）。
+- 每行前缀为 `[traceId] [user]`。traceId 由 `common/log/TraceIdFilter` 生成（客户端带 `X-Trace-Id` 则复用），并用 MDC 透传到业务层日志；user 由 `AuthFilter` 解析后写入，未登录为 `anon`。
+- 标记：`[访问]` 请求出入参耗时、`[业务异常]` 可预期拒绝、`[参数校验失败]`、`[登录]`、`[身份提交]`、`[身份审核]`、`[预约创建]`、`[预约取消]`、`[预约审批]`、`[状态结算]`、`[停用创建]`、`[停用解除]`、`[房间更新]`、`[微信登录]`。
+- 级别：状态变更与成功调用 INFO；被拒绝的调用 WARN；未预期异常 ERROR（带堆栈）。
+- 脱敏：手机号走 `Logs.maskPhone`，openid 等外部标识走 `Logs.abbrev`，令牌与 code 一律不打印。
+- 追踪：同一 traceId 即可还原一次请求的全部日志；响应头 `X-Trace-Id` 会回传，便于前端报错时对齐。
+
+## 7. 验证
 
 接口清单和示例见 [docs/api.md](api.md)，前端页面、状态和 AIGC 生成约束见 [docs/frontend-integration-guide.md](frontend-integration-guide.md)，机器可读契约见 [docs/openapi.yaml](openapi.yaml)，Speckit 使用过程见 [docs/speckit-usage.md](speckit-usage.md)，验证步骤见 `specs/001-meeting-room-booking/quickstart.md`。

@@ -27,10 +27,36 @@
 微信登录流程：
 
 1. 调用 `wx.login()` 获取临时 `code`。
-2. `POST /auth/wechat-login`，请求体为 `{ "code": "..." }`。
+2. 调用 `POST /auth/wechat-login`，请求体只有 `{ "code": "..." }`，获取服务端会话令牌。
 3. 保存响应中的 `accessToken`，后续请求添加 `Authorization: Bearer <accessToken>`。
-4. `registered=false` 时进入身份提交页，调用 `POST /identity/reviews`。
+4. 如果响应中的 `registered=false`，在同一个登录/身份页面展示姓名、学工号、师生类型和手机号表单，使用令牌调用 `POST /identity/reviews`。
 5. 退出登录调用 `POST /auth/logout`，成功后清除本地令牌。
+
+小程序请求示例：
+
+```js
+wx.login({
+  success: ({ code }) => {
+    request('/auth/wechat-login', 'POST', { code }).then((login) => {
+      wx.setStorageSync('accessToken', login.accessToken)
+      if (!login.registered) {
+        // 继续展示姓名、学工号、师生类型、手机号表单
+      }
+    })
+  }
+})
+
+function submitIdentity(form) {
+  return request('/identity/reviews', 'POST', {
+    name: form.name,
+    employeeNo: form.employeeNo,
+    memberType: form.memberType,
+    phone: form.phone
+  })
+}
+```
+
+`request()` 统一从本地读取 `accessToken`，在请求头添加 `Authorization: Bearer <accessToken>`；`/auth/wechat-login` 不带这个请求头，`/identity/reviews` 必须带。
 
 ### 2.2 HTTP 客户端行为
 

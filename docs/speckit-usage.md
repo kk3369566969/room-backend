@@ -81,7 +81,7 @@ specs/001-meeting-room-booking/quickstart.md
 关键技术决策：
 
 - Java 17 + Spring Boot 3.3。
-- Spring Web、JPA、Bean Validation、MySQL Connector/J、Flyway、Lombok。
+- Spring Web、MyBatis-Plus、Bean Validation、MySQL Connector/J、Flyway、Lombok。
 - MySQL 8 持久化，Flyway 管理版本迁移。
 - 生产使用微信小程序 `wx.login` code 换取 Bearer 会话，本地保留 `X-User-Id` 开发身份适配器。
 - 预约写入、确认、取消和停用在事务内执行，重叠查询使用锁。
